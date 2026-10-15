@@ -302,6 +302,7 @@ that produced it:
 behaved differently afterwards. If the rewire didn't work, say exactly where it
 broke — the error text and the last thing that worked. That earns the point in
 full. -->
+I moved `search_listings` onto MCP. In `mcp_server.py` it's registered with `@mcp.tool()` under the same name and the same typed inputs as my Tool Inventory (`description: str`, `size: str | None`, `max_price: float | None`), plus a description that states the size rule, that prices are in US dollars, and that it returns `[]` when nothing matches. In `agent.py` every search now goes through a helper, `_search()`, that calls `call_tool("search_listings", ...)`, including the extra searches `_no_results_message()` uses to work out which filter emptied the results. `suggest_outfit` and `create_fit_card` are still called directly. Nothing behaved differently: for `'graphic tee'` under $30, the MCP result was `==` to the direct call (the same 6 listing dicts in the same order), an impossible query still came back as `[]`, not `null`, and a full run still selected `lst_002`. The one visible difference is speed: each MCP call starts the server, does one search and stops it, so an empty search, which runs up to three extra searches for its message, is noticeably slower than before.
 
 
 

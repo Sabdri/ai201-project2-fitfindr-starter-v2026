@@ -17,7 +17,8 @@ import re
 
 import config
 import trace
-from tools import search_listings, suggest_outfit, create_fit_card
+from tools import suggest_outfit, create_fit_card
+from mcp_client import call_tool
 from generate import ModelUnavailable
 from utils.data_loader import load_listings
 
@@ -124,7 +125,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
         elif step == "search":
             parsed = session["parsed"]
-            session["search_results"] = search_listings(
+            session["search_results"] = _search(
                 parsed["description"], parsed["size"], parsed["max_price"]
             )
             session["searched"] = True
@@ -151,6 +152,15 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
         elif step == "done":
             return session
+
+
+def _search(description: str, size: str | None, max_price: float | None) -> list[dict]:
+    """search_listings, called through the MCP server instead of directly."""
+    return call_tool("search_listings", {
+        "description": description,
+        "size": size,
+        "max_price": max_price,
+    })
 
 
 def _next_step(session: dict) -> str:
@@ -222,7 +232,7 @@ def _no_results_message(parsed: dict) -> str:
     """
     Say what the user could change, based on which filter emptied the search.
 
-    Re-runs search_listings with one filter dropped at a time. That's still only
+    Re-runs search_listings (over MCP) with one filter dropped at a time. That's still only
     the search tool, so the branch rule holds: suggest_outfit is never called.
     """
     desc, size, max_price = parsed["description"], parsed["size"], parsed["max_price"]
@@ -240,7 +250,7 @@ def _no_results_message(parsed: dict) -> str:
         )
 
     tips = []
-    if not search_listings(desc):
+    if not _search(desc, None, None):
         tips.append(
             f"No listing at any size or price matches the words '{desc}'. "
             "Try broader words, like 'tee', 'jeans', 'jacket', 'dress' or 'vintage'."
@@ -253,14 +263,14 @@ def _no_results_message(parsed: dict) -> str:
             )
     else:
         if max_price is not None:
-            without_price = search_listings(desc, size, None)
+            without_price = _search(desc, size, None)
             if without_price:
                 cheapest = min(l["price"] for l in without_price)
                 tips.append(
                     f"Raise your price limit: the cheapest match is ${cheapest:.0f}."
                 )
         if size:
-            without_size = search_listings(desc, None, max_price)
+            without_size = _search(desc, None, max_price)
             if without_size:
                 sizes = sorted({l["size"] for l in without_size})
                 tips.append(
