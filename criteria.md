@@ -25,9 +25,7 @@ Given a query that matches at least one listing, the agent completes all three
 tool calls and returns a fit card — in at least 4 of 5 tries.
 
 **Why this target:**
-<!-- Why 4 of 5 and not 5 of 5? Something about your search, probably —
-     "my search is a plain keyword match and some phrasings will miss" is a
-     real answer. -->
+My `search_listings` is a plain keyword match, not a model. It only finds a listing when the user's words actually appear in its title, description, tags, category or colors. A query that uses a synonym the data doesn't contain, like "hoodie" when the listing says "sweatshirt", can miss a listing that would have fit. There are also two model calls on this path (`suggest_outfit` and `create_fit_card`), and either one can fail or time out. 5 of 5 would assume none of that ever happens.
 
 ---
 
@@ -36,67 +34,32 @@ tool calls and returns a fit card — in at least 4 of 5 tries.
 Given a query that matches no listings, the agent stops before calling
 `suggest_outfit` and returns a message naming what to change — 5 of 5 tries.
 
-**Why this target:**
-<!-- Why is 5 of 5 reasonable here when criterion 1 isn't? What's different
-     about this path? -->
+**Why this target:** 
+This path never calls the model. `search_listings` is plain Python, and the branch is an `if` that checks whether the result list is empty, so the same query gives the same result every time. If it fails even once, that's a bug in my code, not bad luck, so anything less than 5 of 5 would be accepting a bug.
 
 ---
 
-## 3. Something about state
+## 3. The item search found is the item `suggest_outfit` receives
 
-<!-- YOU WRITE THIS ONE.
+For 5 different queries that match at least one listing, the `id` of the listing passed into `suggest_outfit` equals `session["selected_item"]["id"]`, which equals `session["search_results"][0]["id"]` — in 5 of 5 runs.
 
-     How would you know that the item your search found is the same item the
-     next tool received? Name something countable or observable.
-
-     This is the criterion people find hardest, because state failure doesn't
-     look like state failure — it looks like a tool problem. Something that
-     compares session["selected_item"] against what actually reached
-     suggest_outfit is the shape you're after. -->
-
-
-
-**Why this target:**
-
-
+**Why this target:** Every listing has a unique `id`, so comparing ids proves it is the same item, not just a similar one. Getting the item from the search results into `session["selected_item"]` and then into `suggest_outfit` is plain Python with no model involved, so nothing random can change it. Any mismatch would mean my loop read the wrong session field or passed a value around the session, which is a bug. That makes 5 of 5 the only honest target.
 
 ---
 
-## 4. Something about the fit card
+## 4. The fit card is the right length and names the right platform
 
-<!-- YOU WRITE THIS ONE.
+For 5 queries that reach the fit card, each caption is 2–4 sentences long (counting sentences as text ending in `.`, `!` or `?`) and names the listing's actual `platform` (for example "depop" when `selected_item["platform"]` is `"depop"`) without naming any other platform — in at least 4 of 5 captions.
 
-     The fit card calls a model, so the same input can produce different words
-     each time. That's not a bug — it's the nature of the tool. So what would
-     make it acceptable?
-
-     Think about what you'd actually be unhappy to see. A caption that never
-     mentions the price? Two different items producing the same opening
-     sentence? A card longer than a caption anyone would post? Any of those can
-     be turned into a number. -->
-
-
-
-**Why this target:**
-
-
+**Why this target:** The caption comes from the model at temperature 0.9 (`config.py`), so I've set it up to come out different every time, and the model doesn't always follow length instructions. It can also make up details, like saying Poshmark when the item is on Depop. I'm allowing one miss in five because of that randomness. I'm not going lower, though: getting the platform wrong is a factual error a buyer would notice, and a caption longer than 4 sentences isn't one anyone would actually post.
 
 ---
 
-## 5. Your choice
+## 5. The search respects the price ceiling
 
-<!-- YOU WRITE THIS ONE TOO.
+For 5 queries run through the full agent that each include a price limit (for example `'graphic tee under $30'`), every listing in `session["search_results"]` has `price` less than or equal to the limit in the query — in 5 of 5 runs.
 
-     Pick something you actually care about getting right. Speed, the empty
-     wardrobe path, what happens when the model can't be reached, whether the
-     search respects a price ceiling — anything, as long as it names a number
-     or an observable outcome. -->
-
-
-
-**Why this target:**
-
-
+**Why this target:** The filter itself is just a comparison (`price <= max_price`), so it should never let a more expensive item through. I'm checking it through the full agent instead of calling `search_listings` directly, so this also tests whether my query parsing pulls the right number out of the user's words. If the parser misses "$30" and passes `None`, the filter is skipped and this criterion catches it. That makes 5 of 5 a real test rather than an easy one.
 
 ---
 
