@@ -127,18 +127,35 @@ $ python app.py ask '...'
 **The three tools, tested one at a time**
 
 ```
-$ python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
+$ python -c "from tools import search_listings; print([(l['id'], l['title'], l['price'], l['size'], l['platform']) for l in search_listings('graphic tee', max_price=30)])"
+[('lst_002', 'Y2K Baby Tee — Butterfly Print', 18.0, 'S/M', 'depop'), ('lst_006', 'Graphic Tee — 2003 Tour Bootleg Style', 24.0, 'L', 'depop'), ('lst_017', 'Mesh Long-Sleeve Top — Black', 15.0, 'S/M', 'depop'), ('lst_033', 'Vintage Band Tee — Faded Grey', 19.0, 'L', 'depop'), ('lst_011', 'Low-Rise Cargo Pants — Khaki', 27.0, 'W29', 'poshmark'), ('lst_015', 'Vintage Graphic Hoodie — Faded Black', 26.0, 'L', 'depop')]
 
+$ python -c "from tools import search_listings; print(search_listings('ballgown tuxedo', size='XS', max_price=5))"
+[]
 ```
 
 ```
-$ python -c "from tools import suggest_outfit; ..."
+$ python -c "from tools import suggest_outfit; from utils.data_loader import get_example_wardrobe, load_listings; print(suggest_outfit(load_listings()[0], get_example_wardrobe()))"
+Outfit 1
+White ribbed tank top
+Black cropped zip hoodie
+Chunky white sneakers
+Brown leather belt
 
+This outfit works because the fitted tank and cropped hoodie balance the straight-leg fit of the vintage jeans while the belt pulls the streetwear look together.
+
+
+Outfit 2
+Oversized grey crewneck sweatshirt
+Black combat boots
+Black crossbody bag
+
+This outfit works because the relaxed crewneck creates an effortless, cozy silhouette when paired with classic denim and chunky boots.
 ```
 
 ```
-$ python -c "from tools import create_fit_card; ..."
-
+$ python -c "from tools import create_fit_card; from utils.data_loader import load_listings; print(create_fit_card('jeans and white sneakers', load_listings()[0]))"
+Finally found the dream fit with these vintage Levi's 501s and I’m never taking them off. Snagged them on depop for $38 and the medium wash is literally to die for. Just threw them on with beat-up white sneakers for that effortlessly lazy Sunday coffee run energy.
 ```
 
 ---
