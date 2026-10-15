@@ -41,6 +41,8 @@
 
 <!-- Three or four sentences: what a user asks for, and what they get back. -->
 
+FitFindr is a command-line agent for thrift shopping. You type what you want in plain words, like `python app.py ask 'vintage graphic tee under $30, size M'`, and it searches 40 secondhand listings from Depop, Poshmark and thredUp for the best match within your size and price. It then suggests one or two outfits that pair that item with clothes already in your wardrobe, or gives general styling advice if your wardrobe is empty, and writes a short caption you could actually post about the find. If nothing matches, it stops before the outfit step and tells you what to change: broader words, a different size, or a higher price.
+
 
 
 ---
@@ -62,9 +64,9 @@
 - **What it does:** Searches `data/listings.json` for listings whose words match the description, keeping only ones that fit the size and price limits, best match first.
 - **Inputs:**
   - `description` (str): keywords like `"vintage graphic tee"`.
-  - `size` (str or None): a size like `"M"` or `"W30"`. `None` skips the size filter. A listing matches when the requested size equals one whole token of the listing's size, case-insensitive, after splitting on `/`, spaces and parentheses. So `"M"` matches `"S/M"`, `"M/L"` and `"M"`. `"L"` does **not** match `"XL"`, and `"S"` does **not** match `"US 9"`. Listings whose size starts with `"One Size"` match any requested size.
+  - `size` (str or None): a size like `"M"` or `"W30"`. `None` skips the size filter. A listing matches when the requested size equals one whole token of the listing's size, case-insensitive, after splitting on `/`, spaces and parentheses. So `"M"` matches `"S/M"`, `"M/L"` and `"M"`. `"L"` does **not** match `"XL"`, and `"S"` does **not** match `"US 9"`. Listings whose size starts with `"One Size"` match any requested size, and a size that equals the listing's whole size also matches (so `"US 8"` matches `"US 8"`).
   - `max_price` (float or None): the price ceiling, inclusive. `None` skips the price filter.
-- **Returns:** A `list[dict]` of at most 10 (`config.SEARCH_RESULT_LIMIT`) listing dicts, sorted by score, highest first. The score is how many words from `description` appear in the listing's `title`, `description`, `style_tags`, `category` and `colors`. Each dict is the full listing, unchanged: `id`, `title`, `description`, `category`, `style_tags` (list), `size`, `condition`, `price` (float), `colors` (list), `brand` (str or None), `platform`.
+- **Returns:** A `list[dict]` of at most 10 (`config.SEARCH_RESULT_LIMIT`) listing dicts, sorted by score, highest first. The score is how many words from `description` (ignoring filler words like "a", "for", "with") appear in the listing's `title`, `description`, `style_tags`, `category` and `colors`. Each dict is the full listing, unchanged: `id`, `title`, `description`, `category`, `style_tags` (list), `size`, `condition`, `price` (float), `colors` (list), `brand` (str or None), `platform`.
 - **When it has nothing:** It returns an empty list, `[]`, not `None` and not an exception. A listing that scores 0 is dropped, so when no listing scores above 0 the result is `[]`.
 
 ### `suggest_outfit`
@@ -104,9 +106,9 @@
 
 **Where it lives:** `agent.py::run_agent`
 
-**How the query is parsed:** <!-- regex, string splitting, or asking the model — say which -->
+**How the query is parsed:** Regex, in `agent.py::parse_query`. "under $30", "below 30" or "$30" becomes `max_price=30.0`. "size M" or "size US 8" becomes `size`. Filler like "looking for a" is removed, and whatever is left is the `description`. Anything not found is `None`. For example, `'vintage graphic tee under $30, size M'` becomes `{"description": "vintage graphic tee", "size": "M", "max_price": 30.0}`.
 
-**What moves through the session:** <!-- which fields, in what order -->
+**What moves through the session:** Each pass of the loop, `_next_step()` reads the session and picks the next step. The fields fill in this order: `query`, then `parsed` (description / size / max_price), then `search_results` (and `searched = True`). **The branch happens here:** if the results are empty, `error` is set and the run stops. Otherwise it continues with `selected_item` (the first result), then `outfit_input_id` (the `id` of the item handed to `suggest_outfit`, recorded for criterion 3), then `outfit_suggestion`, then `fit_card`. Every tool reads its inputs back out of the session, not from the previous call's return value.
 
 ---
 
@@ -120,7 +122,31 @@
 **One full query**
 
 ```
-$ python app.py ask '...'
+$ python app.py ask 'vintage graphic tee under $30'
+
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+  Outfit:   Outfit 1:
+Pair the Y2K Baby Tee — Butterfly Print with Baggy straight-leg jeans, dark wash and Chunky white sneakers. 
+Why it works: The fitted baby tee balances the volume of the baggy jeans for a classic Y2K streetwear silhouette.
+
+Outfit 2:
+Pair the Y2K Baby Tee — Butterfly Print with Wide-leg khaki trousers, Vintage black denim jacket, and Black combat boots. 
+Why it works: The feminine butterfly graphic softens the tough black denim and combat boots while the khaki trousers ground the look with earth tones.
+
+  Fit card: Found this little baby tee on depop for $18 and I’m literally obsessed. Been living in it with baggy denim and chunky sneakers for that ultimate early 2000s mallrat energy, but it’s honestly just as good toughened up with a beat-up jacket and boots. Such a good score.
+
+0 model calls this session, 2 served from cache
+```
+
+**The empty-search branch**
+
+```
+$ python app.py ask 'designer ballgown size XXS under $5'
+
+  No listings matched 'designer ballgown' in size XXS under $5. No listing at any size or price matches the words 'designer ballgown'. Try broader words, like 'tee', 'jeans', 'jacket', 'dress' or 'vintage'. Also raise your price limit: nothing listed costs less than $12.
+
+0 model calls this session
 
 ```
 
@@ -171,15 +197,15 @@ Finally found the dream fit with these vintage Levi's 501s and I’m never takin
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I gave Claude my first spec for `suggest_outfit`: it returned a list of outfit dicts (`outfit_id`, `name`, `item_ids`, `rationale`) and returned `[]` when the wardrobe was empty (`{"items": []}`), and I asked it to check the spec.
+- *What came back:* It pointed out three problems by comparing my spec to the stub in `tools.py`. My description said the tool combines listings with each other, but it actually takes one listing plus the user's wardrobe. `create_fit_card` takes a string, so a list of dicts wouldn't plug into it without changes and JSON parsing. And the brief says an empty wardrobe should give general advice, not an empty result.
+- *What I changed:* I changed the return type to a non-empty string with 1–2 outfits that name specific wardrobe pieces. For an empty wardrobe, the tool now asks the model for general styling advice instead of returning `[]`, so it never returns an empty value.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* After `create_fit_card` was built, I had Claude run it three times on the same item (the 2003 tour graphic tee) to check that the captions varied, as Milestone 4 asks.
+- *What came back:* All three captions were word for word identical. Temperature in `config.py` was already 0.9, so the cause was the starter's cache handing back the first answer for the same prompt.
+- *What I changed:* I left the cache on for building, since it saves requests, and reran the test with `AI201_CACHE=0`. All three captions came out different and each still mentioned the $24 price and Depop once. I'll keep the cache off when I test the criteria in unit 4, because criterion 4 needs five real answers, not one repeated.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 

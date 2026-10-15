@@ -80,7 +80,8 @@ def search_listings(
     Test it from a terminal before you move on:
         python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
     """
-    words = re.findall(r"[a-z0-9]+", description.lower())
+    words = [w for w in re.findall(r"[a-z0-9]+", description.lower())
+             if w not in _STOPWORDS]
     wanted_size = size.strip().lower() if size else None
 
     scored = []
@@ -109,6 +110,14 @@ def search_listings(
     return [listing for _, listing in scored[: config.SEARCH_RESULT_LIMIT]]
 
 
+# Words that appear in almost every listing description and say nothing about
+# the item. Without this, "a tee for summer" matches on "a" and "for".
+_STOPWORDS = {
+    "a", "an", "the", "and", "or", "for", "with", "of", "to", "in", "on",
+    "my", "me", "i", "im", "it", "is", "some", "that", "this", "but", "at",
+}
+
+
 def _size_matches(wanted: str, listing_size: str) -> bool:
     """
     True when `wanted` equals one whole token of the listing's size.
@@ -117,7 +126,7 @@ def _size_matches(wanted: str, listing_size: str) -> bool:
     match "US 9". "One Size" listings fit anyone, so they always match.
     """
     listing_size = listing_size.lower()
-    if listing_size.startswith("one size"):
+    if listing_size.startswith("one size") or wanted == listing_size:
         return True
     tokens = [t for t in re.split(r"[/\s()]+", listing_size) if t]
     return wanted in tokens
