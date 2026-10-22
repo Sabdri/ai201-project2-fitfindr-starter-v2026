@@ -289,14 +289,90 @@ that produced it:
 **Happy path**
 
 ```
+$ python app.py ask 'vintage graphic tee under $30' --trace
+[1] parse_query
+      in:  vintage graphic tee under $30
+      out: {'description': 'vintage graphic tee', 'size': None, 'max_price': 30.0}
+      →    regex
+[2] search_listings [MCP]
+      in:  {'description': 'vintage graphic tee', 'size': None, 'max_price': 30.0}
+      out: 10 items: Y2K Baby Tee — Butterfly Print, Graphic Tee — 2003 Tour Bootleg Style, Vintage Band Tee — Faded Grey … +7 more
+      →    called through mcp_client.call_tool
+[3] select first result
+      out: Y2K Baby Tee — Butterfly Print ($18.0, depop)
+      →    id lst_002
+[4] suggest_outfit
+      in:  item lst_002, 10 wardrobe items
+      out: Outfit 1: Pair the Y2K Baby Tee — Butterfly Print with Baggy straight-leg jeans, dark wash and Chunky white sn…
+[5] create_fit_card
+      in:  outfit text + item lst_002
+      out: Found this little baby tee on depop for $18 and I’m literally obsessed. Been living in it with baggy denim and…
 
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+  Outfit:   Outfit 1:
+Pair the Y2K Baby Tee — Butterfly Print with Baggy straight-leg jeans, dark wash and Chunky white sneakers. 
+Why it works: The fitted baby tee balances the volume of the baggy jeans for a classic Y2K streetwear silhouette.
+
+Outfit 2:
+Pair the Y2K Baby Tee — Butterfly Print with Wide-leg khaki trousers, Vintage black denim jacket, and Black combat boots. 
+Why it works: The feminine butterfly graphic softens the tough black denim and combat boots while the khaki trousers ground the look with earth tones.
+
+  Fit card: Found this little baby tee on depop for $18 and I’m literally obsessed. Been living in it with baggy denim and chunky sneakers for that ultimate early 2000s mallrat energy, but it’s honestly just as good toughened up with a beat-up jacket and boots. Such a good score.
+
+0 model calls this session, 2 served from cache
 ```
 
 **Empty search**
 
 ```
+$ python app.py ask 'sequined wedding gown size XXS under $3' --trace
+[1] parse_query
+      in:  sequined wedding gown size XXS under $3
+      out: {'description': 'sequined wedding gown', 'size': 'XXS', 'max_price': 3.0}
+      →    regex
+[2] search_listings [MCP]
+      in:  {'description': 'sequined wedding gown', 'size': 'XXS', 'max_price': 3.0}
+      out: [] (empty)
+      →    called through mcp_client.call_tool
+[3] branch: empty search
+      out: No listings matched 'sequined wedding gown' in size XXS under $3. No listing at any size or price matches the …
+      →    stopping, suggest_outfit not called
 
+  No listings matched 'sequined wedding gown' in size XXS under $3. No listing at any size or price matches the words 'sequined wedding gown'. Try broader words, like 'tee', 'jeans', 'jacket', 'dress' or 'vintage'. Also raise your price limit: nothing listed costs less than $12.
+
+0 model calls this session
 ```
+
+The empty search stops after step 3, and `suggest_outfit` and `create_fit_card` never appear. The happy path runs all 5 steps. In both, step 2 is the MCP call (`search_listings [MCP]`, via `mcp_client.call_tool`).
+
+**Failure modes, triggered on purpose**
+
+1. **Empty search.** I ran `python app.py ask 'sequined wedding gown size XXS under $3'`. It was already handled by the branch from unit 3: the agent stops and names what to change (output above). No change was needed.
+
+2. **Empty wardrobe.** `suggest_outfit` was already built for this in unit 3: it returns general advice and never `""`. No change was needed.
+   ```
+   $ python app.py ask 'oversized flannel under $40' --empty-wardrobe
+   (running with an empty wardrobe)
+   
+     Found:    Oversized Flannel Shirt — Plaid Red/Black — $22.0 on thredUp
+   
+     Outfit:   Look 1: Pair it open over a fitted black ribbed tank top with high-waisted baggy light-wash denim and worn-in canvas skate shoes. This balances the oversized top with a tight base and hits that classic 90s streetwear proportion.
+   
+   Look 2: Button it up halfway and tuck it into a black pleated mini skirt, paired with chunky lug-sole Chelsea boots and sheer black tights. This mixes the rugged texture of the flannel with a sharper, grunge-prep contrast.
+   
+     Fit card: Score this vintage Woolrich flannel on thredUp for $22 and I’ve basically lived in it all week. Tossed it on over a fitted tank and baggy denim for that effortless 90s skater vibe, but it looks just as good half-tucked into a pleated mini. Honestly the ultimate grungy throw-on-and-go layer.
+   
+   0 model calls this session, 2 served from cache
+   ```
+
+3. **Model unavailable.** I ran a query I hadn't asked before, with a broken key set for that one command (`GEMINI_API_KEY=AIzaBROKEN... python app.py ask ...`; a variable set in the terminal overrides `.env`, so my real key never changed). **Before the handler**, it didn't hang, but `run_agent` didn't catch it: the exception escaped to `app.py`'s last-resort catch-all, which printed `ModelUnavailable: The model rejected your API key...` and exited with code 1. The session was lost, so the search result the agent *had* found was thrown away, and calling `run_agent` from `agent.py` or `run_eval.py` would have shown a raw traceback. **The handler I added** is in `agent.py::run_agent`. It catches `ModelUnavailable` at whichever step needed the model, puts a message in `session["error"]` naming the tool that couldn't run, keeps what the search found, and says what to do. It also catches `MCPError` if the search server can't be reached.
+   ```
+   $ GEMINI_API_KEY=AIzaBROKEN... python app.py ask 'red flannel shirt under $40'
+   Couldn't reach the AI model, so suggest_outfit couldn't run. The search still worked: it found Oversized Flannel Shirt — Plaid Red/Black ($22 on thredUp). Reason: The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com. Once the key is fixed, run the same search again. If the key is fine, wait a minute and retry, because the model service may be down.
+   
+   1 model calls this session
+   ```
 
 **On the MCP move:** <!-- what changed in your code, and whether anything
 behaved differently afterwards. If the rewire didn't work, say exactly where it

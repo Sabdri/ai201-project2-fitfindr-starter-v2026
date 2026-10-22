@@ -47,7 +47,6 @@ SCENARIOS = [
     # For a fit-card criterion, you probably want the SAME query listed more
     # than once, or several different items, depending on what your criterion
     # actually says.
-]
 
 WARDROBES = ("example", "empty")
 
