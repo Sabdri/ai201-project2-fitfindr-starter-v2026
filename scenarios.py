@@ -48,6 +48,29 @@ SCENARIOS = [
     # than once, or several different items, depending on what your criterion
     # actually says.
 
+    {
+        # Criterion 3 — State criterion: Verifies session updates or preference persistence.
+        "name": "state updates on match",
+        "query": "black leather jacket under $100",
+        "wardrobe": "example",
+        "criterion": 3,
+    },
+    {
+        # Criterion 4 — Fit-card criterion: Running same item/query again to verify card updates.
+        "name": "fit card repetition test",
+        "query": "vintage graphic tee under $30",
+        "wardrobe": "example",
+        "criterion": 4,
+    },
+    {
+        # Criterion 5 — Specific edge-case wardrobe or query boundary.
+        "name": "fit card multiple evaluation",
+        "query": "oversized hoodie under $40",
+        "wardrobe": "example",
+        "criterion": 5,
+    },
+]
+
 WARDROBES = ("example", "empty")
 
 

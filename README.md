@@ -225,19 +225,75 @@ Finally found the dream fit with these vintage Levi's 501s and I’m never takin
      `python run_eval.py --label before` runs everything and writes the table
      into results/. Paste it here and fill in the verdicts. -->
 
+From `python run_eval.py --label before` (cache off, temperature 0.9), saved as `results/run_2026-10-21_2147_before.md`. Each criterion was scored from that file's output and the trace printed during the run.
+
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. Matching query completes all three tools (`vintage graphic tee under $30`) | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. Impossible query stops before `suggest_outfit` (`designer ballgown size XXS under $5`) | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. Item search found = item `suggest_outfit` received (`black leather jacket under $100`) | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. Fit card is 2–4 sentences and names only the right platform (`vintage graphic tee under $30`) | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. Every search result is ≤ the query's price limit (`oversized hoodie under $40`) | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
 
-**Real output from one try**, pasted as text, naming the file and function
-that produced it:
+The run also included one diagnostic scenario that isn't one of the five: an empty wardrobe (`denim jacket under $50`, `--empty-wardrobe`). All 5 tries completed with general styling advice and a fit card.
 
+**How each try was scored**
+
+- **1:** PASS if the try was not stopped early and has a non-empty fit card. All 5 tries show `stopped early: no` and a fit card.
+- **2:** PASS if the try stopped, `suggest_outfit` never ran, and the message names something to change. All 5 tries show `stopped early: yes`, and the trace ends at `[3] branch: empty search → stopping, suggest_outfit not called`. Each message says to use broader words and to raise the price above $12.
+- **3:** PASS if the first search result, `selected_item` and the item handed to `suggest_outfit` have the same `id`. In all 5 traces, the first search result is `90s Leather Bomber — Black`, step `[3] select first result` shows `id lst_022`, and step `[4] suggest_outfit` shows `in: item lst_022`.
+- **4:** PASS if the caption has 2–4 sentences (counted by `.` `!` `?`) and names `depop` and no other platform. The sentence counts were 3, 2, 2, 3, 3. All 5 named only depop.
+- **5:** PASS if every listing in `search_results` costs ≤ $40. The search is deterministic and returned the same 6 listings every try, priced $22, $35, $20, $26, $21 and $17.
+
+**Real output, one try per criterion**
+
+Criterion 1, try 1 (`run_eval.py::main`, which calls `agent.py::run_agent`; the fit card is from `tools.py::create_fit_card`):
+```
+- stopped early: no
+- selected_item: Y2K Baby Tee — Butterfly Print ($18.0, depop)
+- search_results: 10
+
+Fit card:
+scored this butterfly baby tee on depop for $18 and it’s officially my whole personality now. threw it on with baggy dark wash denim and chunky sneaks for the ultimate off-duty bratz doll energy.
 ```
 
+Criterion 2, try 1 (`agent.py::run_agent`, the branch in `_next_step` → `_no_results_message`):
+```
+[1] parse_query
+      in:  designer ballgown size XXS under $5
+      out: {'description': 'designer ballgown', 'size': 'XXS', 'max_price': 5.0}
+[2] search_listings [MCP]
+      in:  {'description': 'designer ballgown', 'size': 'XXS', 'max_price': 5.0}
+      out: [] (empty)
+[3] branch: empty search
+      out: No listings matched 'designer ballgown' in size XXS under $5. No listing at any size or price matches the word…
+      →    stopping, suggest_outfit not called
+  try 1: stopped early — No listings matched 'designer ballgown' in size XXS under $5
+```
+
+Criterion 3, try 1 (the trace from `agent.py::run_agent`):
+```
+[2] search_listings [MCP]
+      out: 10 items: 90s Leather Bomber — Black, Platform Mary Janes — Black Patent, Oversized Flannel Shirt — Plaid Red/Black … +7 more
+[3] select first result
+      out: 90s Leather Bomber — Black ($75.0, depop)
+      →    id lst_022
+[4] suggest_outfit
+      in:  item lst_022, 10 wardrobe items
+```
+
+Criterion 4, try 1 (`tools.py::create_fit_card`, 3 sentences, platform depop):
+```
+scored this little butterfly print baby tee on depop for eighteen bucks and honestly it's the exact vibe I've been looking for. obsessed with how it looks dressed down with baggy dark wash denim, but it's just as good with chunky trousers and boots. total early 2000s mall rat energy.
+```
+
+Criterion 5, try 1 (`tools.py::search_listings` over MCP; prices checked against `max_price=40.0`):
+```
+[1] parse_query
+      out: {'description': 'oversized hoodie', 'size': None, 'max_price': 40.0}
+[2] search_listings [MCP]
+      out: 6 items: Oversized Flannel Shirt — Plaid Red/Black, Knit Cardigan — Chunky Brown, Oversized Crewneck Sweatshirt — Vintage Navy … +3 more
+prices of all 6 results: [22.0, 35.0, 20.0, 26.0, 21.0, 17.0]
 ```
 
 ---
